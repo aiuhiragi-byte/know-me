@@ -1,0 +1,9 @@
+name = "toukei-tori-api"
+main = "worker.js"
+compatibility_date = "2026-06-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "toukei-tori"
+# database_id はCIデプロイ時に実IDへ置換される(deploy-api.yml参照)
+database_id = "REPLACED_IN_CI"

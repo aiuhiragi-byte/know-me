@@ -14,3 +14,12 @@ GitHub Pages 等で公開すると、スマホの「ホーム画面に追加」�
 - **予想**: 記録1件目から表示。精度自信メーター(🥚→🐣→🐤→🦜)が記録のたびに育ちます
 - **グラフ**: 時間帯 / 曜日×時間帯(ヒートマップ)/ 月の日付 を切り替え
 - **バックアップ**: JSON書き出し・読み込み(マージ)対応
+- **共有(v2)**: 統計の設定画面から「共有を開始」→ 招待URLを送るだけ。登録不要・記録はローカルファーストでオフラインでも動作
+
+## サーバー(共有API)
+
+`server/` は Cloudflare Workers + D1 の共有APIです(仕様は SPEC.md §11)。
+GitHub Actions(`deploy-api.yml`)でデプロイされます。必要なリポジトリSecrets:
+
+- `CLOUDFLARE_API_TOKEN` — Workers Scripts:Edit と D1:Edit 権限のAPIトークン
+- `CLOUDFLARE_ACCOUNT_ID` — CloudflareアカウントID
