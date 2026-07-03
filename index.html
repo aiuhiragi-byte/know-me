@@ -317,18 +317,115 @@ function predBlock(stat) {
   return box;
 }
 
+/* ---------- 共有・同期(v2) ----------
+ * ローカルファースト: 記録はまず端末に保存し、共有中の統計だけ裏でサーバーと同期する。
+ * stat.share = {sid, member, owner?, nick, dead?} / stat.ops = 未送信の操作キュー
+ */
+const API_BASE = localStorage.getItem('tt:api') || '';
+async function api(method, path, body) {
+  const r = await fetch(API_BASE + path, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) { const e = new Error('api ' + r.status); e.status = r.status; throw e; }
+  return r.json();
+}
+function canShare() { return !!API_BASE; }
+function isMine(stat, rec) { return !stat.share || !rec.member || rec.member === stat.share.member; }
+function queueOp(stat, op) { (stat.ops || (stat.ops = [])).push(op); }
+function unqueuePut(stat, id) {
+  if (!stat.ops) return false;
+  const i = stat.ops.findIndex(o => o.op === 'put' && o.rec.id === id);
+  if (i >= 0) { stat.ops.splice(i, 1); return true; }
+  return false;
+}
+const syncing = new Set();
+async function syncStat(stat) {
+  if (!stat.share || stat.share.dead || !API_BASE || syncing.has(stat.id)) return;
+  syncing.add(stat.id);
+  const sid = stat.share.sid;
+  let changed = false;
+  try {
+    const ops = (stat.ops || []).slice();
+    const puts = ops.filter(o => o.op === 'put');
+    if (puts.length) {
+      await api('POST', '/api/stats/' + sid + '/records', {
+        records: puts.map(o => ({ ...o.rec, member: stat.share.member, nick: stat.share.nick || '' })),
+      });
+      const sent = new Set(puts.map(o => o.rec.id));
+      stat.ops = stat.ops.filter(o => !(o.op === 'put' && sent.has(o.rec.id)));
+    }
+    for (const o of ops) {
+      if (o.op === 'del') await api('DELETE', '/api/stats/' + sid + '/records/' + o.id + '?member=' + stat.share.member);
+      else if (o.op === 'patch') await api('PATCH', '/api/stats/' + sid + '/records/' + o.id, { member: stat.share.member, c: o.c, ts: o.ts });
+      else continue;
+      stat.ops = stat.ops.filter(x => x !== o);
+    }
+    const d = await api('GET', '/api/stats/' + sid);
+    stat.title = d.title; stat.choices = d.choices; // 定義はサーバー優先
+    const pendingIds = new Set((stat.ops || []).filter(o => o.op === 'put').map(o => o.rec.id));
+    const merged = d.records.concat(stat.records.filter(r => pendingIds.has(r.id)));
+    if (JSON.stringify(merged) !== JSON.stringify(stat.records)) { stat.records = merged; changed = true; }
+    stat.lastSync = Date.now();
+    save();
+  } catch (e) {
+    if (e.status === 404 || e.status === 410) { stat.share.dead = 1; save(); }
+    // それ以外(オフライン等)はキューを保持して次回再送
+  } finally { syncing.delete(stat.id); }
+  if (changed && location.hash === '#/s/' + stat.id) route();
+}
+async function shareStat(stat) {
+  const owner = uid() + uid() + uid();
+  const d = await api('POST', '/api/stats', { title: stat.title, choices: stat.choices, owner });
+  stat.share = { sid: d.sid, member: uid() + uid(), owner, nick: '' };
+  stat.ops = stat.records.map(r => ({ op: 'put', rec: { ...r } }));
+  save();
+  await syncStat(stat);
+}
+function joinUrl(stat) { return location.href.split('#')[0] + '#/join/' + stat.share.sid; }
+function memberCount(stat) {
+  const m = new Set([stat.share.member]);
+  for (const r of stat.records) if (r.member) m.add(r.member);
+  return m.size;
+}
+
 /* ---------- 記録 ---------- */
 function addRecord(stat, ci, ts) {
   const before = confidence(stat.records).pct;
   const rec = { id: uid(), c: ci, ts: ts || Date.now() };
+  if (stat.share) {
+    rec.member = stat.share.member;
+    if (stat.share.nick) rec.nick = stat.share.nick;
+    queueOp(stat, { op: 'put', rec: { ...rec } });
+  }
   stat.records.push(rec);
   save();
+  if (stat.share) syncStat(stat);
   return { rec, delta: confidence(stat.records).pct - before };
 }
 function removeRecord(stat, recId) {
   const i = stat.records.findIndex(r => r.id === recId);
-  if (i >= 0) { stat.records.splice(i, 1); save(); return true; }
-  return false;
+  if (i < 0) return false;
+  if (!isMine(stat, stat.records[i])) return false; // 他人の記録は消せない
+  stat.records.splice(i, 1);
+  if (stat.share && !unqueuePut(stat, recId)) queueOp(stat, { op: 'del', id: recId });
+  save();
+  if (stat.share) syncStat(stat);
+  return true;
+}
+function editRecord(stat, rec, patch) { // {c?, ts?}
+  if (!isMine(stat, rec)) return false;
+  if (patch.c != null) rec.c = patch.c;
+  if (patch.ts != null) rec.ts = patch.ts;
+  if (stat.share) {
+    const pending = (stat.ops || []).find(o => o.op === 'put' && o.rec.id === rec.id);
+    if (pending) { pending.rec.c = rec.c; pending.rec.ts = rec.ts; }
+    else queueOp(stat, { op: 'patch', id: rec.id, c: rec.c, ts: rec.ts });
+  }
+  save();
+  if (stat.share) syncStat(stat);
+  return true;
 }
 
 /* ---------- トースト ---------- */
@@ -579,27 +676,33 @@ function renderDetail(stat) {
   const recent = [...stat.records].sort((a, b) => b.ts - a.ts).slice(0, 20);
   const hist = el('div', { class: 'hist' }, recent.map(r => {
     const row = el('div', { class: 'hist-row' });
-    const build = () => row.replaceChildren(
+    const mine = isMine(stat, r);
+    const build = () => replaceKids(row,
       el('span', { class: 'chip' }, swatchFor(stat, r.c), stat.choices[r.c] ? stat.choices[r.c].name : '?'),
-      el('span', { class: 'when' }, fmtTs(r.ts)),
-      el('button', { class: 'ghost-btn mini', onclick: () => {
+      el('span', { class: 'when' }, fmtTs(r.ts),
+        stat.share ? el('span', { style: { color: 'var(--muted)', marginLeft: '5px' } },
+          mine ? '(自分)' : '(' + (r.nick || 'なかま') + ')') : null),
+      mine ? el('button', { class: 'ghost-btn mini', onclick: () => {
         const inp = el('input', { type: 'datetime-local', value: toLocalInput(r.ts), style: { fontSize: '.8rem', padding: '5px' } });
         row.replaceChildren(inp,
           el('button', { class: 'ghost-btn mini', onclick: () => {
             const t = new Date(inp.value).getTime();
-            if (!isNaN(t)) { r.ts = t; save(); }
+            if (!isNaN(t)) editRecord(stat, r, { ts: t });
             route();
           } }, '保存'),
           el('button', { class: 'ghost-btn mini', onclick: build }, 'やめる'));
-      } }, '日時修正'),
-      el('button', { class: 'ghost-btn mini danger-btn', onclick: () => { removeRecord(stat, r.id); route(); } }, '削除'));
+      } }, '日時修正') : null,
+      mine ? el('button', { class: 'ghost-btn mini danger-btn', onclick: () => { removeRecord(stat, r.id); route(); } }, '削除') : null);
     build();
     return row;
   }));
 
+  if (stat.share) syncStat(stat); // 共有中なら裏で同期(変化があれば再描画される)
   replaceKids(app,
     el('a', { class: 'backlink', href: '#/' }, '‹ ホーム'),
     el('h1', null, stat.title),
+    stat.share ? el('div', { class: 'center', style: { fontSize: '.75rem', color: 'var(--muted)', margin: '-10px 0 10px' } },
+      stat.share.dead ? '☁ 共有停止済み(記録は端末に残っています)' : '☁ 共有中 · ' + memberCount(stat) + '人') : null,
     el('div', { class: 'btnrow' }, stat.choices.map((ch, ci) =>
       choiceButton(stat, ci, { onhit: i => recordAndToast(stat, i) }))),
     backdate,
@@ -636,7 +739,7 @@ function renderDone(stat, recId) {
       el('div', { style: { fontSize: '.78rem', color: 'var(--muted)', marginBottom: '6px' } }, 'まちがえた?こっちに差し替え:'),
       el('div', { class: 'btnrow', style: { justifyContent: 'center' } },
         stat.choices.map((ch, ci) => ci === rec.c ? null : choiceButton(stat, ci, { small: true, onhit: i => {
-          rec.c = i; save(); renderDone(stat, rec.id);
+          editRecord(stat, rec, { c: i }); renderDone(stat, rec.id);
         } })))) : null,
     el('div', { class: 'linkrow' },
       el('a', { href: '#/s/' + stat.id }, 'くわしく見る'), ' / ', el('a', { href: '#/' }, 'ホーム')));
@@ -680,8 +783,14 @@ function renderEdit(stat) {
           if (!t || cleaned.length < 2) { toast('タイトルとボタン2つ以上が必要だトリ🦜'); return; }
           if (cleaned.length < stat.choices.length) { toast('選択肢は減らせないトリ(記録が迷子になるので)'); return; }
           stat.title = t; stat.choices = cleaned; save();
+          if (stat.share && !stat.share.dead) {
+            if (stat.share.owner) api('PATCH', '/api/stats/' + stat.share.sid,
+              { owner: stat.share.owner, title: t, choices: cleaned }).catch(() => {});
+            else toast('共有中の名前・ボタンはオーナーの変更が優先されるトリ');
+          }
           location.hash = '#/s/' + stat.id;
         } }, '保存する'))),
+    shareCard(stat),
     el('div', { class: 'card' },
       el('h2', null, '🚀 クイック記録URL'),
       el('p', { style: { fontSize: '.8rem', color: 'var(--ink2)', margin: '0 0 10px' } },
@@ -699,6 +808,78 @@ function renderEdit(stat) {
             location.hash = '#/';
           }
         } }, 'この統計を削除'))));
+}
+
+/* ---------- 共有カード(設定画面) ---------- */
+function copyText(url, doneMsg) {
+  (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
+    .then(() => toast(doneMsg)).catch(() => prompt('このURLをコピーしてね', url));
+}
+function shareCard(stat) {
+  const card = el('div', { class: 'card' }, el('h2', null, '🤝 仲間と共有'));
+  if (!canShare()) {
+    card.appendChild(el('p', { style: { fontSize: '.8rem', color: 'var(--muted)', margin: 0 } },
+      '共有サーバーは準備中だトリ🐣(準備できたらここに共有ボタンが出ます)'));
+    return card;
+  }
+  if (!stat.share) {
+    card.appendChild(el('p', { style: { fontSize: '.8rem', color: 'var(--ink2)', margin: '0 0 10px' } },
+      '共有すると招待URLが発行され、開いた人も登録なしで同じ統計に記録できます。共有するまで記録は端末の外に出ません。'));
+    const btn = el('button', { class: 'ghost-btn', onclick: async () => {
+      btn.disabled = true; btn.textContent = '共有を準備中…';
+      try { await shareStat(stat); toast('共有を開始したトリ🦜'); route(); }
+      catch (e) { toast('サーバーに接続できないトリ…あとで試してね'); btn.disabled = false; btn.textContent = '共有を開始する'; }
+    } }, '共有を開始する');
+    card.appendChild(btn);
+    return card;
+  }
+  if (stat.share.dead) {
+    card.appendChild(el('p', { style: { fontSize: '.8rem', color: 'var(--muted)', margin: 0 } },
+      'この共有は停止されています。記録は端末に残っています。'));
+    return card;
+  }
+  const nickIn = el('input', { type: 'text', value: stat.share.nick || '', maxlength: 20, placeholder: '(任意)' });
+  card.append(
+    el('p', { style: { fontSize: '.8rem', color: 'var(--ink2)', margin: '0 0 8px' } },
+      '☁ 共有中 · ' + memberCount(stat) + '人 — 招待URLをLINE等で送ってね(URLを知っている人は誰でも参加できます)'),
+    el('div', { class: 'urlbox' },
+      el('button', { class: 'ghost-btn', style: { flex: '0 0 auto' }, onclick: () => copyText(joinUrl(stat), '招待URLをコピーしたトリ🦜') }, '招待URL をコピー'),
+      el('span', { class: 'u' }, joinUrl(stat))),
+    el('label', null, 'ニックネーム(今後の記録に付きます)'),
+    el('div', { style: { display: 'flex', gap: '8px' } }, nickIn,
+      el('button', { class: 'ghost-btn', style: { flex: '0 0 auto' }, onclick: () => {
+        stat.share.nick = nickIn.value.trim(); save(); toast('保存したトリ🦜');
+      } }, '保存')),
+    stat.share.owner ? el('div', { style: { marginTop: '12px' } },
+      el('button', { class: 'ghost-btn danger-btn', onclick: async () => {
+        if (!confirm('共有を停止する?(招待URLが無効になります。みんなの記録はこの端末に残ります)')) return;
+        try { await api('POST', '/api/stats/' + stat.share.sid + '/revoke', { owner: stat.share.owner }); }
+        catch (e) {}
+        stat.share.dead = 1; save(); route();
+      } }, '共有を停止(リンク無効化)')) : null);
+  return card;
+}
+
+/* ---------- 参加(招待URLを開いた時) ---------- */
+async function handleJoin(sid) {
+  const existing = db.stats.find(s => s.share && s.share.sid === sid);
+  if (existing) { location.replace('#/s/' + existing.id); return; }
+  replaceKids(app, el('p', { class: 'empty-note' }, '共有statに参加中だトリ…🦜'));
+  if (!canShare()) { toast('共有サーバーが未設定だトリ…'); location.replace('#/'); return; }
+  try {
+    const d = await api('GET', '/api/stats/' + sid);
+    const stat = {
+      id: uid(), title: d.title, choices: d.choices,
+      records: d.records.slice(), created: Date.now(),
+      share: { sid, member: uid() + uid(), nick: '' }, ops: [],
+    };
+    db.stats.push(stat); save();
+    toast('「' + stat.title + '」に参加したトリ🦜');
+    location.replace('#/s/' + stat.id);
+  } catch (e) {
+    toast(e.status === 410 ? 'この共有は停止されているトリ…' : '招待が見つからないか、接続できないトリ…');
+    location.replace('#/');
+  }
 }
 
 /* ---------- 書き出し / 読み込み ---------- */
@@ -737,6 +918,7 @@ function route() {
   const p = h.split('/').map(decodeURIComponent);
   if (!h) return renderHome();
   if (p[0] === 'new') return renderNew();
+  if (p[0] === 'join' && p[1]) return handleJoin(p[1]);
   if (p[0] === 's' && p[1]) {
     const stat = findStat(p[1]);
     if (!stat) { toast('その統計は見つからないトリ…'); location.replace('#/'); return; }
@@ -756,6 +938,12 @@ function route() {
   renderHome();
 }
 window.addEventListener('hashchange', route);
+// 画面に戻ってきた時、表示中の共有statを裏で最新化する
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  const m = location.hash.match(/^#\/s\/([^/]+)$/);
+  if (m) { const s = findStat(m[1]); if (s && s.share) syncStat(s); }
+});
 route();
 </script>
 </body>
