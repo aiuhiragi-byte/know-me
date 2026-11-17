@@ -26,6 +26,6 @@ jobs:
           git checkout --orphan gh-pages
           git reset
           touch .nojekyll
-          git add index.html .nojekyll
+          git add index.html .nojekyll moiikai
           git commit -m "Deploy site from ${GITHUB_SHA}"
           git push -f origin gh-pages

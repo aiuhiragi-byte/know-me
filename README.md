@@ -23,3 +23,7 @@ GitHub Actions(`deploy-api.yml`)でデプロイされます。必要なリポジ
 
 - `CLOUDFLARE_API_TOKEN` — Workers Scripts:Edit と D1:Edit 権限のAPIトークン
 - `CLOUDFLARE_ACCOUNT_ID` — CloudflareアカウントID
+
+## ほかの作品
+
+- [`moiikai/`](moiikai/) — 3Dホラー「もういいかい」(アカウントなしで遊べる版)。公開先: https://aiuhiragi-byte.github.io/know-me/moiikai/
