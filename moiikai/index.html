@@ -5182,7 +5182,7 @@ function loop(now){
   else if(state==='title')yaw+=dt*0.12;
   // 見守る・自動の地図：3Dは描かない（軽くする）
   if(state==='watch'){}
-  else if(wView&&state==='play'){WV.t-=dt;if(WV.t<=0){WV.t=1/15;drawWatch();}}
+  else if(wView&&state==='play'){WV.pingCd-=dt;WV.t-=dt;if(WV.t<=0){WV.t=1/15;drawWatch();}}
   else{updateCamera();renderer.render(scene,camera);}
   requestAnimationFrame(loop);
 }
