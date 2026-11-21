@@ -4257,7 +4257,7 @@ function setView(on){wView=!!on&&autoMode&&!NET.on;$('b-view').classList.toggle(
 function wvSync(){
   const mw=state==='watch',sv=wView&&state==='play';
   $('watch').hidden=!(mw||sv);document.body.classList.toggle('wm',mw);document.body.classList.toggle('wv',sv);
-  $('w-back').hidden=!mw;if(!mw)pzClose();WV.t=0;
+  $('w-back').hidden=!mw;if(!(mw||sv))pzClose();WV.t=0;
 }
 function watchGame(){
   NET.lastPr=null;linkReset();
@@ -4356,7 +4356,7 @@ function watchTick(dt){
 }
 // 地図を押す：シャッター → 明かり → 通路の印
 $('wcv').addEventListener('pointerdown',e=>{
-  if(state!=='watch'||WZ.on||!L)return;e.preventDefault();
+  if(!(state==='watch'||(wView&&state==='play'))||WZ.on||!L)return;e.preventDefault();
   const rc=$('wcv').getBoundingClientRect(),px=e.clientX-rc.left,py=e.clientY-rc.top;
   for(const b of WV.boxes){const x=(px-b.ox)/b.s*CS,z=(py-b.oy)/b.s*CS;if(x<0||z<0||x>=L.W*CS||z>=L.W*CS)continue;wvTap(b.l,x,z);break;}
 });
@@ -4366,7 +4366,7 @@ function wvTap(l,x,z){
   const i=Math.floor(x/CS),j=Math.floor(z/CS);if(i<0||j<0||i>=L.W||j>=L.W)return '';
   const k=idx(i,j);if(l===0?L.wall1[k]:(L.wall2[k]||L.hole[k]))return '';
   if(WV.pingCd>0)return '';WV.pingCd=2.5;
-  NET.sg=[r2(x),r2(z),l,NET.gen,(NET.sgSeq=(NET.sgSeq|0)+1)];addWMark(x,z,l,true);sndClick();
+  if(NET.watch)NET.sg=[r2(x),r2(z),l,NET.gen,(NET.sgSeq=(NET.sgSeq|0)+1)];addWMark(x,z,l,true);sndClick();
   return 'sg';
 }
 /* ===== 配線パズル（シャッター・明かりを動かすとき）=====
@@ -4446,7 +4446,10 @@ function pzTurn(k){
   else pzDraw();
 }
 function pzDone(){
-  const t=WZ.tgt;pzClose();if(!t||!NET.watch)return;
+  const t=WZ.tgt;pzClose();if(!t)return;
+  // 1人（自動運転の地図）：その場で効かせる
+  if(!NET.on){if(t.t==='sh'){const d=L.shut&&L.shut[t.id];if(d&&!d.broken)shutSet(d,!d.closed,true);}else if(t.t==='lt')lampRelight(t.i);return;}
+  if(!NET.watch)return;
   if(t.t==='sh')NET.us=[t.id,(NET.usSeq=(NET.usSeq|0)+1)];
   else if(t.t==='lt'){NET.lt=[t.i,NET.gen,(NET.ltSeq=(NET.ltSeq|0)+1)];lampRelight(t.i);}
 }
