@@ -296,12 +296,12 @@ body.wm .hud,body.wm .map,body.wm .dot,body.wm .touch,body.wm .help,body.wv .map
 
 <div class="screen" id="s-start">
   <div class="box">
-    <h1 class="ttl">もういい<b>かい</b></h1>
+    <h1 class="ttl" id="ttl">もういい<b>かい</b></h1>
     <div class="ttl-rule"></div>
     <p class="lore"><span>あの日、ふざけて地下に閉じこめた。</span><span>つぎの朝、あの子は冷たくなっていた。</span><span>だれにも言わなかった。──今夜、あの子が呼んでいる。</span></p>
     <div class="chars" id="start-chars"></div>
     <div class="go-row"><button class="go" id="go-start" type="button">ひとりで</button><button class="go" id="go-mp" type="button">みんなで</button></div>
-    <div class="go-row"><button class="go sub" id="go-auto" type="button">自動で見る</button><button class="go sub" id="go-opt" type="button">設定</button></div>
+    <div class="go-row"><button class="go sub" id="go-auto" type="button" hidden>自動で見る</button><button class="go sub" id="go-opt" type="button">設定</button></div>
   </div>
 </div>
 <div class="screen" id="s-lobby" hidden>
@@ -2200,6 +2200,7 @@ function renderKeys(){
   const row=(name,btn)=>{const r=document.createElement('div');r.className='krow';const sp=document.createElement('span');sp.textContent=name;r.append(sp,btn);box.appendChild(r);};
   if(!isTouch){
     for(const a in KEYDEF){
+      if(!ADMIN&&(a==='auto'||a==='speed'||a==='view'))continue;
       const b=document.createElement('button');b.type='button';b.className='key'+(waitKey===a?' wait':'');b.textContent=waitKey===a?'キーを押す':keyLabel(OPT.keys[a]);
       b.addEventListener('click',()=>{waitKey=waitKey===a?null:a;renderKeys();});
       row(KEYNAME[a],b);
@@ -2228,10 +2229,10 @@ function closeOpt(){
 for(const k in SLIDERS)$('o-'+k).addEventListener('input',e=>{OPT[k]=+e.target.value;$('v-'+k).textContent=SLIDERS[k](OPT[k]);applyOpt();});
 $('o-close').addEventListener('click',closeOpt);
 const startFloor=()=>Math.max(1,Math.min(LAST,OPT.sf|0||1));
-function sfShow(){$('v-sf').textContent='地下'+startFloor()+'階';$('o-cgp').disabled=state!=='title';$('o-title').hidden=state==='title';}
+function sfShow(){$('o-cgp').hidden=!ADMIN;$('v-sf').textContent='地下'+startFloor()+'階';$('o-cgp').disabled=state!=='title';$('o-title').hidden=state==='title';}
 $('o-sf-dn').addEventListener('click',()=>{OPT.sf=Math.max(1,startFloor()-1);sfShow();saveOpt();});
 $('o-sf-up').addEventListener('click',()=>{OPT.sf=Math.min(LAST,startFloor()+1);sfShow();saveOpt();});
-$('o-cgp').addEventListener('click',()=>{if(state!=='title')return;audioInit();waitKey=null;$('s-opt').hidden=true;saveOpt();optFrom=null;cgPractice();});
+$('o-cgp').addEventListener('click',()=>{if(state!=='title'||!ADMIN)return;audioInit();waitKey=null;$('s-opt').hidden=true;saveOpt();optFrom=null;cgPractice();});
 $('o-reset').addEventListener('click',()=>{const ch=OPT.ch;Object.assign(OPT,OPTDEF);OPT.ch=ch;OPT.keys=Object.assign({},KEYDEF);applyOpt();openOptRefresh();});
 function openOptRefresh(){sfShow();for(const k in SLIDERS){$('o-'+k).value=OPT[k];$('v-'+k).textContent=SLIDERS[k](OPT[k]);}waitKey=null;renderKeys();}
 const BADKEY=['MetaLeft','MetaRight','OSLeft','OSRight'];
@@ -2268,7 +2269,7 @@ addEventListener('keydown',e=>{
   if(!e.repeat&&isKey('jump',e.code))jumpQ=true;
   if(!e.repeat&&isKey('light',e.code)&&state==='play')setLight(!lightOn);
   if(!e.repeat&&isKey('use',e.code)&&state==='play')useAction();
-  if(!e.repeat&&isKey('auto',e.code)&&state==='play')setAuto(!autoMode);
+  if(!e.repeat&&isKey('auto',e.code)&&state==='play'&&ADMIN&&!NET.on)setAuto(!autoMode);
   if(!e.repeat&&isKey('speed',e.code)&&state==='play'&&autoMode)cycleSpeed();
   if(!e.repeat&&isKey('view',e.code)&&state==='play'&&autoMode&&!NET.on)setView(!wView);
   // ⌘ を押している間は、ほかのキーを離した合図が届かない（Mac）。押したことにしない
@@ -2328,7 +2329,7 @@ $('b-light').addEventListener('pointerdown',e=>{e.preventDefault();if(state==='p
 $('b-speed').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();if(autoMode)cycleSpeed();});
 $('b-view').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();if(autoMode&&!NET.on)setView(!wView);});
 $('b-use').addEventListener('pointerdown',e=>{e.preventDefault();useAction();});
-$('b-auto').addEventListener('pointerdown',e=>{e.preventDefault();if(state==='play')setAuto(!autoMode);});
+$('b-auto').addEventListener('pointerdown',e=>{e.preventDefault();if(state==='play'&&ADMIN)setAuto(!autoMode);});
 const br=$('b-run');
 /* 走るボタン：押している間は走る／上にスワイプでジャンプ／下にスワイプでしゃがむ（もう一度下か、上で立つ） */
 const RB={id:null,y:0,done:false};
@@ -2344,10 +2345,28 @@ br.addEventListener('pointermove',e=>{
 ['pointerup','pointercancel'].forEach(t=>br.addEventListener(t,e=>{if(e.pointerId!==RB.id)return;RB.id=null;touchRun=false;br.classList.remove('on');}));
 
 /* ===== 画面遷移 ===== */
+let ADMIN=false;
+try{ADMIN=localStorage.getItem('moiikai-admin')==='1';}catch(e){}
+function adminSync(){
+  $('go-auto').hidden=!ADMIN;$('o-cgp').hidden=!ADMIN;
+  $('b-auto').hidden=NET.on||!ADMIN;
+  if(!ADMIN&&autoMode)setAuto(false);
+}
+{
+  let taps=0,tapT=0;
+  $('ttl').addEventListener('click',()=>{
+    const now=performance.now();taps=now-tapT<900?taps+1:1;tapT=now;
+    if(taps<5)return;taps=0;
+    ADMIN=!ADMIN;try{localStorage.setItem('moiikai-admin',ADMIN?'1':'0');}catch(e){}
+    try{if(ADMIN){tone('sine',660,990,0.18,0.06);setTimeout(()=>tone('sine',990,1320,0.22,0.05),120);}else{tone('sine',990,660,0.18,0.05);setTimeout(()=>tone('sine',660,440,0.22,0.04),120);}}catch(e){}
+    adminSync();if(!$('s-opt').hidden)renderKeys();
+  });
+}
+$('go-auto').hidden=!ADMIN;$('o-cgp').hidden=!ADMIN;$('b-auto').hidden=!ADMIN;
 function setState(s){
   state=s;
   $('s-start').hidden=s!=='title';$('s-pause').hidden=s!=='pause';$('s-over').hidden=s!=='over';$('s-lobby').hidden=s!=='lobby';$('s-clear').hidden=s!=='clear';$('s-cgp').hidden=s!=='cgend';
-  $('b-auto').hidden=NET.on;
+  adminSync();
   if((s==='over'||s==='clear')&&document.exitPointerLock&&locked)document.exitPointerLock();
   if(drone&&s!=='play')drone.gain.value=0.015;
   wvSync();
@@ -2367,7 +2386,7 @@ $('go-back').addEventListener('click',()=>{netLeave();setState('title');});
 $('go-netback').addEventListener('click',()=>{netLeave();setState('title');if(document.exitPointerLock)document.exitPointerLock();});
 $('go-leave').addEventListener('click',()=>{hideLeave();if(NET.host){if(exitOpen)advanceFloor(true);}else NET.go=++NET.goSeq;lockPointer();});
 $('go-wait').addEventListener('click',()=>{NET.waitDismiss=true;hideLeave();lockPointer();});
-$('go-auto').addEventListener('click',()=>{audioInit();newGame();setState('play');setAuto(true);});
+$('go-auto').addEventListener('click',()=>{if(!ADMIN)return;audioInit();newGame();setState('play');setAuto(true);});
 $('go-opt').addEventListener('click',openOpt);$('go-opt2').addEventListener('click',openOpt);
 $('b-opt').addEventListener('click',()=>{if(state==='play'&&!NET.on&&!autoMode)setState('pause');openOpt();});
 function toTitle(){
