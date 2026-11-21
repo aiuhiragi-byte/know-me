@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>統計トリ🦜</title>
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="統計トリ">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --page: #f9f9f7; --surface: #fcfcfb;
+    --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10);
+    --meter-fill: #2a78d6; --meter-track: #cde2fb;
+    --heat0: #cde2fb; --heat1: #9ec5f4; --heat2: #6da7ec;
+    --heat3: #3987e5; --heat4: #1c5cab; --heat5: #0d366b;
+    --good: #006300; --danger: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #0d0d0d; --surface: #1a1a19;
+      --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10);
+      --meter-fill: #3987e5; --meter-track: #184f95;
+      --heat0: #104281; --heat1: #1c5cab; --heat2: #2a78d6;
+      --heat3: #5598e7; --heat4: #86b6ef; --heat5: #cde2fb;
+      --good: #0ca30c; --danger: #e66767;
+    }
+  }
+  body {
+    margin: 0; min-height: 100vh; background: var(--page); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  #app { max-width: 480px; margin: 0 auto; padding: 12px 14px 48px; }
+  h1 { font-size: 1.5rem; text-align: center; margin: 14px 0 16px; letter-spacing: .05em; }
+  h1 a { color: inherit; text-decoration: none; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px; margin-bottom: 12px;
+  }
+  .card h2 { margin: 0 0 10px; font-size: 1.05rem; }
+  .card .meta { font-size: .75rem; color: var(--muted); margin-top: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
+  button { font-family: inherit; font-size: 1rem; cursor: pointer; }
+  .choice-btn {
+    border: none; border-radius: 12px; padding: 12px 18px; font-weight: 600;
+    flex: 1 1 auto; min-height: 48px;
+  }
+  .choice-btn.small { min-height: 38px; padding: 8px 14px; font-size: .9rem; flex: 0 1 auto; }
+  .primary-btn {
+    display: block; width: 100%; padding: 14px; font-size: 1.05rem; font-weight: 600;
+    background: var(--surface); color: var(--ink); border: 1px dashed var(--axis);
+    border-radius: 14px; margin-bottom: 14px;
+  }
+  .ghost-btn {
+    background: none; border: 1px solid var(--border); border-radius: 10px;
+    color: var(--ink2); padding: 8px 12px; font-size: .85rem;
+  }
+  .danger-btn { border-color: var(--danger); color: var(--danger); }
+  .linkrow { text-align: center; margin: 18px 0 6px; font-size: .9rem; }
+  a { color: var(--meter-fill); }
+  input[type=text], input[type=datetime-local] {
+    font-family: inherit; font-size: 1rem; padding: 10px; border-radius: 10px;
+    border: 1px solid var(--axis); background: var(--surface); color: var(--ink); width: 100%;
+  }
+  label { display: block; font-size: .8rem; color: var(--ink2); margin: 14px 0 4px; }
+  .backlink { font-size: .85rem; display: inline-block; margin-bottom: 4px; }
+
+  /* 自信メーター */
+  .meter-block { margin: 4px 0 2px; }
+  .meter-line { display: flex; align-items: center; gap: 8px; }
+  .meter-stage { font-size: 1.5rem; }
+  .meter-bar { flex: 1; height: 12px; border-radius: 6px; background: var(--meter-track); overflow: hidden; }
+  .meter-bar > div { height: 100%; border-radius: 6px; background: var(--meter-fill); width: 0; transition: width .7s ease; }
+  .meter-pct { font-weight: 700; font-size: 1rem; min-width: 3.2em; text-align: right; }
+  .meter-pct .delta { color: var(--good); font-size: .75rem; font-weight: 600; margin-left: 2px; }
+  .meter-hint { font-size: .75rem; color: var(--muted); margin: 4px 0 0 2px; }
+  .meter-mini { display: inline-flex; align-items: center; gap: 5px; }
+  .meter-mini .meter-bar { width: 70px; height: 7px; }
+
+  /* 予想 */
+  .pred { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin: 12px 0; }
+  .pred .now { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+  .pred .line { font-size: .88rem; color: var(--ink2); margin: 4px 0; }
+  .pred .line b { color: var(--ink); }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: baseline; }
+
+  /* タブ・凡例・グラフ */
+  .tabs { display: flex; gap: 6px; margin: 16px 0 10px; }
+  .tabs button {
+    flex: 1; padding: 8px 4px; font-size: .82rem; border-radius: 10px;
+    border: 1px solid var(--border); background: none; color: var(--ink2);
+  }
+  .tabs button.active { background: var(--surface); color: var(--ink); font-weight: 600; border-color: var(--axis); }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: .78rem; color: var(--ink2); margin: 6px 2px 10px; }
+  .legend span { display: inline-flex; align-items: center; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .chips button { font-size: .78rem; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--ink2); }
+  .chips button.active { border-color: var(--axis); background: var(--surface); color: var(--ink); font-weight: 600; }
+
+  .chart-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 12px 8px; }
+  .cols { display: flex; align-items: flex-end; gap: 3px; height: 150px; border-bottom: 1px solid var(--axis); position: relative; }
+  .cols .gline { position: absolute; left: 0; right: 0; height: 1px; background: var(--grid); }
+  .cols .gline span { position: absolute; right: 0; top: -14px; font-size: .65rem; color: var(--muted); background: var(--surface); padding-left: 3px; }
+  .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; height: 100%; min-width: 0; position: relative; z-index: 1; }
+  .col .seg { width: 100%; max-width: 24px; margin: 0 auto; border-radius: 0; }
+  .col .seg.top { border-radius: 4px 4px 0 0; }
+  .xlabels { display: flex; gap: 3px; margin-top: 4px; }
+  .xlabels span { flex: 1; font-size: .62rem; color: var(--muted); text-align: center; min-width: 0; overflow: visible; white-space: nowrap; }
+  .empty-note { color: var(--muted); font-size: .85rem; text-align: center; padding: 30px 0; }
+
+  .heat { display: grid; gap: 2px; }
+  .heat .rowlab, .heat .collab { font-size: .65rem; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+  .heat .cell { border-radius: 3px; min-height: 20px; border: 1px solid var(--grid); background: var(--surface); }
+  .heat .cell.filled { border-color: transparent; }
+  .heat-scale { display: flex; align-items: center; gap: 6px; font-size: .68rem; color: var(--muted); margin-top: 8px; }
+  .heat-scale .ramp { display: flex; flex: 0 0 auto; }
+  .heat-scale .ramp i { width: 18px; height: 10px; display: block; }
+
+  /* 履歴 */
+  .hist { margin-top: 6px; }
+  .hist-row { display: flex; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px solid var(--grid); font-size: .85rem; }
+  .hist-row .when { color: var(--ink2); flex: 1; }
+  .hist-row .mini { font-size: .72rem; padding: 4px 8px; }
+  .chip { display: inline-flex; align-items: center; font-size: .8rem; font-weight: 600; }
+
+  details { margin: 10px 0; }
+  summary { font-size: .85rem; color: var(--ink2); cursor: pointer; padding: 4px 0; }
+
+  /* ツールチップ・トースト */
+  #tip {
+    position: fixed; z-index: 50; pointer-events: none; display: none;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 10px; font-size: .78rem; box-shadow: 0 4px 14px rgba(0,0,0,.18); max-width: 220px;
+  }
+  #tip .tt { font-weight: 600; margin-bottom: 4px; }
+  #tip .tr { display: flex; align-items: center; gap: 6px; color: var(--ink2); margin: 2px 0; }
+  #tip .tr b { color: var(--ink); font-size: .85rem; }
+  #tip .key { width: 12px; height: 3px; border-radius: 2px; flex: 0 0 auto; }
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60;
+    background: var(--ink); color: var(--page); border-radius: 12px; padding: 12px 16px;
+    font-size: .9rem; display: none; align-items: center; gap: 12px; max-width: 90vw;
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
+  }
+  #toast button { background: none; border: none; color: inherit; font-weight: 700; text-decoration: underline; padding: 4px; }
+
+  .done-big { text-align: center; font-size: 1.3rem; font-weight: 700; margin: 26px 0 6px; }
+  .done-sub { text-align: center; color: var(--ink2); font-size: .9rem; margin-bottom: 18px; }
+  .center { text-align: center; }
+  .urlbox { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+  .urlbox .u { flex: 1; font-size: .72rem; color: var(--muted); word-break: break-all; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="tip"></div>
+<div id="toast"></div>
+<script>
+'use strict';
+/* ---------- データ ---------- */
+const KEY = 'toukei-tori:v1';
+let db = load();
+function load() {
+  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && Array.isArray(d.stats)) return d; } catch (e) {}
+  return { stats: [] };
+}
+function save() { localStorage.setItem(KEY, JSON.stringify(db)); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function findStat(id) { return db.stats.find(s => s.id === id); }
+
+/* ---------- 色(検証済みパレット・8スロット固定順) ---------- */
+const SLOTS_LIGHT = ['#2a78d6','#1baf7a','#eda100','#008300','#4a3aa7','#e34948','#e87ba4','#eb6834'];
+const SLOTS_DARK  = ['#3987e5','#199e70','#c98500','#008300','#9085e9','#e66767','#d55181','#d95926'];
+const darkMq = matchMedia('(prefers-color-scheme: dark)');
+darkMq.addEventListener && darkMq.addEventListener('change', () => route());
+function slotColor(slot) { return (darkMq.matches ? SLOTS_DARK : SLOTS_LIGHT)[slot % 8]; }
+function inkOn(hex) { // 塗りの上の文字色(白 or 黒)を輝度で選ぶ
+  const n = parseInt(hex.slice(1), 16);
+  const l = (0.299*(n>>16 & 255) + 0.587*(n>>8 & 255) + 0.114*(n & 255)) / 255;
+  return l > 0.55 ? '#0b0b0b' : '#ffffff';
+}
+
+/* ---------- 日時 ---------- */
+const DAYS = ['日','月','火','水','木','金','土'];
+const BIN_N = 12; // 2時間刻み
+function binOf(d) { return Math.floor(d.getHours() / 2); }
+function binLabel(b) { return (b*2) + '〜' + (b*2+2) + '時'; }
+function fmtTs(ts) {
+  const d = new Date(ts);
+  return (d.getMonth()+1) + '/' + d.getDate() + '(' + DAYS[d.getDay()] + ') '
+    + d.getHours() + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+function toLocalInput(ts) {
+  const d = new Date(ts - new Date(ts).getTimezoneOffset()*60000);
+  return d.toISOString().slice(0, 16);
+}
+
+/* ---------- DOMヘルパー(名前類はすべて textContent 経由) ---------- */
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    if (k === 'style') Object.assign(e.style, attrs[k]);
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), attrs[k]);
+    else if (k === 'class') e.className = attrs[k];
+    else e.setAttribute(k, attrs[k]);
+  }
+  for (const kid of kids.flat()) {
+    if (kid == null) continue;
+    e.appendChild(typeof kid === 'string' ? document.createTextNode(kid) : kid);
+  }
+  return e;
+}
+const app = document.getElementById('app');
+function replaceKids(parent, ...kids) { // replaceChildren は null を文字列化するので除外する
+  parent.replaceChildren(...kids.flat(2).filter(k => k != null));
+}
+
+/* ---------- 自信メーター ---------- */
+function confidence(recs) {
+  const n = recs.length;
+  const days = new Set(), bins = new Set();
+  for (const r of recs) { const d = new Date(r.ts); days.add(d.getDay()); bins.add(binOf(d)); }
+  const countScore = 60 * Math.sqrt(Math.min(n, 30) / 30);
+  const cov = 20 * (days.size / 7) + 20 * (bins.size / BIN_N);
+  const pct = Math.min(100, Math.round(countScore + cov));
+  const stage = pct < 25 ? '🥚' : pct < 50 ? '🐣' : pct < 75 ? '🐤' : '🦜';
+  return { pct, stage, n, cov };
+}
+function boostHint(recs) {
+  const c = confidence(recs);
+  if (c.pct >= 100) return '自信満々!りっぱな統計トリに育ったトリ🦜';
+  const target = Math.min(100, (Math.floor(c.pct / 10) + 1) * 10);
+  for (let k = 1; k <= 60; k++) {
+    const cs = 60 * Math.sqrt(Math.min(c.n + k, 30) / 30);
+    if (Math.min(100, Math.round(cs + c.cov)) >= target) return 'あと' + k + '回記録すると自信アップ!';
+  }
+  return 'いつもと違う時間帯・曜日に記録すると自信アップ!';
+}
+function meterBlock(recs, opts) {
+  opts = opts || {};
+  const c = confidence(recs);
+  const fill = el('div');
+  const pctEl = el('span', { class: 'meter-pct' }, c.pct + '%',
+    opts.delta > 0 ? el('span', { class: 'delta' }, '+' + opts.delta + '% ⤴') : null);
+  const block = el('div', { class: 'meter-block' },
+    el('div', { class: 'meter-line' },
+      el('span', { class: 'meter-stage' }, c.stage),
+      el('div', { class: 'meter-bar' }, fill), pctEl),
+    el('div', { class: 'meter-hint' }, '予想の自信メーター — ' + boostHint(recs)));
+  requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = c.pct + '%'; }));
+  return block;
+}
+
+/* ---------- 予想 ---------- */
+function groupCounts(stat, filter) { // filter(rec) を満たす記録の選択肢別カウント
+  const g = new Array(stat.choices.length).fill(0);
+  let total = 0;
+  for (const r of stat.records) if (r.c < g.length && (!filter || filter(r))) { g[r.c]++; total++; }
+  return { g, total };
+}
+function topChoice(gc) {
+  let ci = 0; for (let i = 1; i < gc.g.length; i++) if (gc.g[i] > gc.g[ci]) ci = i;
+  return { ci, pct: Math.round(100 * gc.g[ci] / gc.total), n: gc.total };
+}
+function nowPred(stat) {
+  const now = new Date(), d = now.getDay(), b = binOf(now);
+  let gc = groupCounts(stat, r => { const t = new Date(r.ts); return t.getDay() === d && binOf(t) === b; });
+  if (gc.total) return { scope: 'いま(' + DAYS[d] + '曜 ' + binLabel(b) + ')', ...topChoice(gc) };
+  gc = groupCounts(stat, r => binOf(new Date(r.ts)) === b);
+  if (gc.total) return { scope: 'この時間帯(' + binLabel(b) + '・全曜日)', ...topChoice(gc) };
+  gc = groupCounts(stat, null);
+  if (gc.total) return { scope: 'これまで全体', ...topChoice(gc) };
+  return null;
+}
+function bestFor(stat, ci) { // 選択肢ciが最も出やすい 曜日×時間帯
+  const m = new Map();
+  for (const r of stat.records) {
+    if (r.c >= stat.choices.length) continue;
+    const d = new Date(r.ts), key = d.getDay() * 100 + binOf(d);
+    if (!m.has(key)) m.set(key, new Array(stat.choices.length).fill(0));
+    m.get(key)[r.c]++;
+  }
+  let best = null;
+  for (const [key, g] of m) {
+    if (!g[ci]) continue;
+    const tot = g.reduce((a, b) => a + b, 0), ratio = g[ci] / tot;
+    if (!best || ratio > best.ratio || (ratio === best.ratio && tot > best.n))
+      best = { d: Math.floor(key / 100), b: key % 100, ratio, n: tot };
+  }
+  return best;
+}
+function swatchFor(stat, ci) {
+  return el('span', { class: 'swatch', style: { background: slotColor(stat.choices[ci].slot) } });
+}
+function predBlock(stat) {
+  if (!stat.records.length) {
+    return el('div', { class: 'pred' },
+      el('div', { class: 'line' }, 'まだ記録がないトリ🥚 ボタンを押すと1件目から予想が始まるよ!'));
+  }
+  const box = el('div', { class: 'pred' });
+  const np = nowPred(stat);
+  if (np) box.appendChild(el('div', { class: 'now' },
+    np.scope + 'は ', swatchFor(stat, np.ci),
+    el('b', null, stat.choices[np.ci].name), ' の確率 ' + np.pct + '%'));
+  stat.choices.forEach((ch, ci) => {
+    const b = bestFor(stat, ci);
+    if (!b) return;
+    box.appendChild(el('div', { class: 'line' }, swatchFor(stat, ci), '「' + ch.name + '」が多いのは ',
+      el('b', null, DAYS[b.d] + '曜 ' + binLabel(b.b)), ' (' + Math.round(b.ratio * 100) + '%)'));
+  });
+  return box;
+}
+
+/* ---------- 共有・同期(v2) ----------
+ * ローカルファースト: 記録はまず端末に保存し、共有中の統計だけ裏でサーバーと同期する。
+ * stat.share = {sid, member, owner?, nick, dead?} / stat.ops = 未送信の操作キュー
+ */
+const API_BASE = localStorage.getItem('tt:api') || '';
+async function api(method, path, body) {
+  const r = await fetch(API_BASE + path, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) { const e = new Error('api ' + r.status); e.status = r.status; throw e; }
+  return r.json();
+}
+function canShare() { return !!API_BASE; }
+function isMine(stat, rec) { return !stat.share || !rec.member || rec.member === stat.share.member; }
+function queueOp(stat, op) { (stat.ops || (stat.ops = [])).push(op); }
+function unqueuePut(stat, id) {
+  if (!stat.ops) return false;
+  const i = stat.ops.findIndex(o => o.op === 'put' && o.rec.id === id);
+  if (i >= 0) { stat.ops.splice(i, 1); return true; }
+  return false;
+}
+const syncing = new Set();
+async function syncStat(stat) {
+  if (!stat.share || stat.share.dead || !API_BASE || syncing.has(stat.id)) return;
+  syncing.add(stat.id);
+  const sid = stat.share.sid;
+  let changed = false;
+  try {
+    const ops = (stat.ops || []).slice();
+    const puts = ops.filter(o => o.op === 'put');
+    if (puts.length) {
+      await api('POST', '/api/stats/' + sid + '/records', {
+        records: puts.map(o => ({ ...o.rec, member: stat.share.member, nick: stat.share.nick || '' })),
+      });
+      const sent = new Set(puts.map(o => o.rec.id));
+      stat.ops = stat.ops.filter(o => !(o.op === 'put' && sent.has(o.rec.id)));
+    }
+    for (const o of ops) {
+      if (o.op === 'del') await api('DELETE', '/api/stats/' + sid + '/records/' + o.id + '?member=' + stat.share.member);
+      else if (o.op === 'patch') await api('PATCH', '/api/stats/' + sid + '/records/' + o.id, { member: stat.share.member, c: o.c, ts: o.ts });
+      else continue;
+      stat.ops = stat.ops.filter(x => x !== o);
+    }
+    const d = await api('GET', '/api/stats/' + sid);
+    stat.title = d.title; stat.choices = d.choices; // 定義はサーバー優先
+    const pendingIds = new Set((stat.ops || []).filter(o => o.op === 'put').map(o => o.rec.id));
+    const merged = d.records.concat(stat.records.filter(r => pendingIds.has(r.id)));
+    if (JSON.stringify(merged) !== JSON.stringify(stat.records)) { stat.records = merged; changed = true; }
+    stat.lastSync = Date.now();
+    save();
+  } catch (e) {
+    if (e.status === 404 || e.status === 410) { stat.share.dead = 1; save(); }
+    // それ以外(オフライン等)はキューを保持して次回再送
+  } finally { syncing.delete(stat.id); }
+  if (changed && location.hash === '#/s/' + stat.id) route();
+}
+async function shareStat(stat) {
+  const owner = uid() + uid() + uid();
+  const d = await api('POST', '/api/stats', { title: stat.title, choices: stat.choices, owner });
+  stat.share = { sid: d.sid, member: uid() + uid(), owner, nick: '' };
+  stat.ops = stat.records.map(r => ({ op: 'put', rec: { ...r } }));
+  save();
+  await syncStat(stat);
+}
+function joinUrl(stat) { return location.href.split('#')[0] + '#/join/' + stat.share.sid; }
+function memberCount(stat) {
+  const m = new Set([stat.share.member]);
+  for (const r of stat.records) if (r.member) m.add(r.member);
+  return m.size;
+}
+
+/* ---------- 記録 ---------- */
+function addRecord(stat, ci, ts) {
+  const before = confidence(stat.records).pct;
+  const rec = { id: uid(), c: ci, ts: ts || Date.now() };
+  if (stat.share) {
+    rec.member = stat.share.member;
+    if (stat.share.nick) rec.nick = stat.share.nick;
+    queueOp(stat, { op: 'put', rec: { ...rec } });
+  }
+  stat.records.push(rec);
+  save();
+  if (stat.share) syncStat(stat);
+  return { rec, delta: confidence(stat.records).pct - before };
+}
+function removeRecord(stat, recId) {
+  const i = stat.records.findIndex(r => r.id === recId);
+  if (i < 0) return false;
+  if (!isMine(stat, stat.records[i])) return false; // 他人の記録は消せない
+  stat.records.splice(i, 1);
+  if (stat.share && !unqueuePut(stat, recId)) queueOp(stat, { op: 'del', id: recId });
+  save();
+  if (stat.share) syncStat(stat);
+  return true;
+}
+function editRecord(stat, rec, patch) { // {c?, ts?}
+  if (!isMine(stat, rec)) return false;
+  if (patch.c != null) rec.c = patch.c;
+  if (patch.ts != null) rec.ts = patch.ts;
+  if (stat.share) {
+    const pending = (stat.ops || []).find(o => o.op === 'put' && o.rec.id === rec.id);
+    if (pending) { pending.rec.c = rec.c; pending.rec.ts = rec.ts; }
+    else queueOp(stat, { op: 'patch', id: rec.id, c: rec.c, ts: rec.ts });
+  }
+  save();
+  if (stat.share) syncStat(stat);
+  return true;
+}
+
+/* ---------- トースト ---------- */
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function toast(msg, undoFn) {
+  replaceKids(toastEl,el('span', null, msg),
+    undoFn ? el('button', { onclick: () => { undoFn(); hideToast(); } }, '取り消す') : null);
+  toastEl.style.display = 'flex';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 5000);
+}
+function hideToast() { toastEl.style.display = 'none'; }
+
+/* ---------- ツールチップ ---------- */
+const tip = document.getElementById('tip');
+function showTip(ev, title, rows) { // rows: [{color?, name, value}]
+  tip.replaceChildren(el('div', { class: 'tt' }, title),
+    ...rows.map(r => el('div', { class: 'tr' },
+      r.color ? el('span', { class: 'key', style: { background: r.color } }) : null,
+      el('b', null, r.value), el('span', null, r.name))));
+  tip.style.display = 'block';
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + 12, y = ev.clientY - h - 10;
+  if (x + w > innerWidth - 6) x = ev.clientX - w - 12;
+  if (y < 6) y = ev.clientY + 14;
+  tip.style.left = Math.max(6, x) + 'px'; tip.style.top = y + 'px';
+}
+function hideTip() { tip.style.display = 'none'; }
+document.addEventListener('pointerdown', e => { if (!e.target.closest('[data-tip]')) hideTip(); });
+function bindTip(node, fn) {
+  node.setAttribute('data-tip', '1');
+  node.addEventListener('pointerenter', e => fn(e));
+  node.addEventListener('pointermove', e => fn(e));
+  node.addEventListener('pointerleave', hideTip);
+  node.addEventListener('pointerdown', e => fn(e));
+}
+
+/* ---------- 選択肢ボタン ---------- */
+function choiceButton(stat, ci, opts) {
+  opts = opts || {};
+  const color = slotColor(stat.choices[ci].slot);
+  return el('button', {
+    class: 'choice-btn' + (opts.small ? ' small' : ''),
+    style: { background: color, color: inkOn(color) },
+    onclick: () => opts.onhit(ci)
+  }, stat.choices[ci].name);
+}
+function recordAndToast(stat, ci, ts) {
+  const { rec, delta } = addRecord(stat, ci, ts);
+  toast('「' + stat.choices[ci].name + '」を記録したトリ🦜' + (delta > 0 ? ' 自信+' + delta + '%⤴' : ''),
+    () => { removeRecord(stat, rec.id); route(); });
+  route();
+}
+
+/* ---------- グラフ共通 ---------- */
+function tallyBy(stat, keyFn, nKeys) { // keys × choices の件数表
+  const t = Array.from({ length: nKeys }, () => new Array(stat.choices.length).fill(0));
+  for (const r of stat.records) {
+    if (r.c >= stat.choices.length) continue;
+    const k = keyFn(new Date(r.ts));
+    if (k >= 0 && k < nKeys) t[k][r.c]++;
+  }
+  return t;
+}
+function stackedCols(stat, tally, labelFn, labelEvery) {
+  const H = 150;
+  const max = Math.max(1, ...tally.map(g => g.reduce((a, b) => a + b, 0)));
+  const wrap = el('div');
+  const cols = el('div', { class: 'cols' });
+  // 目盛り(最大値と半分)
+  [[max, 0], [Math.round(max / 2), H / 2]].forEach(([v, top]) => {
+    if (v > 0) cols.appendChild(el('div', { class: 'gline', style: { top: top + 'px' } },
+      el('span', null, v + '件')));
+  });
+  tally.forEach((g, i) => {
+    const col = el('div', { class: 'col' });
+    let first = true;
+    for (let ci = stat.choices.length - 1; ci >= 0; ci--) { // 上から choiceN…choice0
+      if (!g[ci]) continue;
+      const seg = el('div', {
+        class: 'seg' + (first ? ' top' : ''),
+        style: { height: Math.max(3, g[ci] / max * (H - 8)) + 'px', background: slotColor(stat.choices[ci].slot) }
+      });
+      first = false;
+      col.appendChild(seg);
+    }
+    const total = g.reduce((a, b) => a + b, 0);
+    bindTip(col, ev => showTip(ev, labelFn(i) + '(' + total + '件)',
+      stat.choices.map((ch, ci) => ({
+        color: slotColor(ch.slot), name: ch.name,
+        value: g[ci] + '件' + (total ? ' (' + Math.round(100 * g[ci] / total) + '%)' : '')
+      }))));
+    cols.appendChild(col);
+  });
+  wrap.appendChild(cols);
+  wrap.appendChild(el('div', { class: 'xlabels' },
+    tally.map((_, i) => el('span', null, i % labelEvery === 0 ? labelFn(i) : ''))));
+  return wrap;
+}
+function legendRow(stat) {
+  return el('div', { class: 'legend' }, stat.choices.map((ch, ci) =>
+    el('span', null, swatchFor(stat, ci), ch.name)));
+}
+
+/* ---------- グラフ3種 ---------- */
+function chartTime(stat) {
+  return stackedCols(stat, tallyBy(stat, d => binOf(d), BIN_N), i => (i * 2) + '時', 2);
+}
+function chartMonth(stat) {
+  return stackedCols(stat, tallyBy(stat, d => d.getDate() - 1, 31), i => (i + 1) + '日', 5);
+}
+function chartHeat(stat, selCi, onSel) {
+  const wrap = el('div');
+  // 選択肢チップ(どの選択肢の率を見るか)
+  wrap.appendChild(el('div', { class: 'chips' }, stat.choices.map((ch, ci) =>
+    el('button', { class: ci === selCi ? 'active' : '', onclick: () => onSel(ci) },
+      '「' + ch.name + '」率'))));
+  const cells = new Map();
+  for (const r of stat.records) {
+    if (r.c >= stat.choices.length) continue;
+    const d = new Date(r.ts), key = d.getDay() * 100 + binOf(d);
+    if (!cells.has(key)) cells.set(key, new Array(stat.choices.length).fill(0));
+    cells.get(key)[r.c]++;
+  }
+  const grid = el('div', { class: 'heat', style: { gridTemplateColumns: '22px repeat(' + BIN_N + ', 1fr)' } });
+  grid.appendChild(el('div'));
+  for (let b = 0; b < BIN_N; b++) grid.appendChild(el('div', { class: 'collab' }, b % 2 === 0 ? String(b * 2) : ''));
+  const RAMP = ['var(--heat0)','var(--heat1)','var(--heat2)','var(--heat3)','var(--heat4)','var(--heat5)'];
+  for (let d = 0; d < 7; d++) {
+    grid.appendChild(el('div', { class: 'rowlab' }, DAYS[d]));
+    for (let b = 0; b < BIN_N; b++) {
+      const g = cells.get(d * 100 + b);
+      const cell = el('div', { class: 'cell' });
+      if (g) {
+        const tot = g.reduce((a, x) => a + x, 0), ratio = g[selCi] / tot;
+        cell.classList.add('filled');
+        cell.style.background = RAMP[Math.min(5, Math.floor(ratio * 6))];
+        bindTip(cell, ev => showTip(ev, DAYS[d] + '曜 ' + binLabel(b),
+          [{ color: slotColor(stat.choices[selCi].slot), name: stat.choices[selCi].name,
+             value: Math.round(ratio * 100) + '% (' + g[selCi] + '/' + tot + '件)' }]));
+      }
+      grid.appendChild(cell);
+    }
+  }
+  wrap.appendChild(grid);
+  wrap.appendChild(el('div', { class: 'heat-scale' }, el('span', null, '0%'),
+    el('span', { class: 'ramp' }, RAMP.map(c => el('i', { style: { background: c } }))),
+    el('span', null, '100%'), el('span', null, '(空白=記録なし)')));
+  return wrap;
+}
+
+/* ---------- 画面: ホーム ---------- */
+function renderHome() {
+  document.title = '統計トリ🦜';
+  replaceKids(app,
+    el('h1', null, '統計トリ🦜'),
+    el('button', { class: 'primary-btn', onclick: () => location.hash = '#/new' }, '＋ 新規統計'),
+    ...db.stats.map(stat => {
+      const c = confidence(stat.records);
+      const card = el('div', { class: 'card' },
+        el('h2', { style: { cursor: 'pointer' }, onclick: () => location.hash = '#/s/' + stat.id }, stat.title + ' ›'),
+        el('div', { class: 'btnrow' }, stat.choices.map((ch, ci) =>
+          choiceButton(stat, ci, { onhit: i => recordAndToast(stat, i) }))),
+        el('div', { class: 'meta' },
+          el('span', { class: 'meter-mini' }, c.stage,
+            el('span', { class: 'meter-bar' }, el('div', { style: { width: c.pct + '%' } })), c.pct + '%'),
+          el('span', null, '記録 ' + stat.records.length + '件'),
+          stat.records.length ? el('span', null, '最終 ' + fmtTs(Math.max(...stat.records.map(r => r.ts)))) : null));
+      return card;
+    }),
+    db.stats.length ? null : el('p', { class: 'empty-note' },
+      '「新規統計」から最初の統計を作るトリ🐣', el('br'),
+      '例: タイトル「八百屋の混み」/ ボタン「混んでる」「混んでない」'),
+    el('div', { class: 'linkrow' },
+      el('a', { href: '#', onclick: e => { e.preventDefault(); exportAll(); } }, 'バックアップ(書き出し)'), ' / ',
+      el('a', { href: '#', onclick: e => { e.preventDefault(); importAll(); } }, '読み込み')));
+}
+
+/* ---------- 画面: 新規作成 ---------- */
+function renderNew() {
+  const titleIn = el('input', { type: 'text', placeholder: '例: 八百屋の混み', maxlength: 40 });
+  const choicesBox = el('div');
+  const addChoiceInput = (val) => {
+    choicesBox.appendChild(el('div', { style: { marginBottom: '8px' } },
+      el('input', { type: 'text', placeholder: '例: ' + (choicesBox.children.length === 0 ? '混んでる' : '混んでない'), maxlength: 20, value: val || '' })));
+  };
+  addChoiceInput(); addChoiceInput();
+  replaceKids(app,
+    el('a', { class: 'backlink', href: '#/' }, '‹ ホーム'),
+    el('h1', null, '新しい統計'),
+    el('div', { class: 'card' },
+      el('label', null, 'タイトル'), titleIn,
+      el('label', null, 'ボタン(選択肢)'), choicesBox,
+      el('button', { class: 'ghost-btn', onclick: () => addChoiceInput() }, '＋ 選択肢を追加'),
+      el('div', { style: { marginTop: '18px' } },
+        el('button', { class: 'primary-btn', style: { borderStyle: 'solid' }, onclick: () => {
+          const title = titleIn.value.trim();
+          const names = [...choicesBox.querySelectorAll('input')].map(i => i.value.trim()).filter(Boolean);
+          if (!title) { toast('タイトルを入れてトリ🦜'); return; }
+          if (names.length < 2) { toast('ボタンは2つ以上必要だトリ🦜'); return; }
+          const stat = { id: uid(), title, choices: names.map((n, i) => ({ name: n, slot: i % 8 })), records: [], created: Date.now() };
+          db.stats.push(stat); save();
+          location.hash = '#/s/' + stat.id;
+        } }, '作成する'))));
+  titleIn.focus();
+}
+
+/* ---------- 画面: 統計詳細 ---------- */
+const viewState = {}; // statId → {tab, heatCi}
+function renderDetail(stat) {
+  document.title = stat.title + ' | 統計トリ🦜';
+  const vs = viewState[stat.id] || (viewState[stat.id] = { tab: 'time', heatCi: 0 });
+  if (vs.heatCi >= stat.choices.length) vs.heatCi = 0;
+
+  // さかのぼり記録
+  const backTs = el('input', { type: 'datetime-local', value: toLocalInput(Date.now()) });
+  const backdate = el('details', null,
+    el('summary', null, '⏰ 過去の日時で記録する(押し忘れた時)'),
+    el('div', { style: { margin: '8px 0' } }, backTs),
+    el('div', { class: 'btnrow' }, stat.choices.map((ch, ci) =>
+      choiceButton(stat, ci, { small: true, onhit: i => {
+        const t = new Date(backTs.value).getTime();
+        if (isNaN(t)) { toast('日時が読めないトリ🦜'); return; }
+        recordAndToast(stat, i, t);
+      } }))));
+
+  // グラフ
+  const chartArea = el('div', { class: 'chart-wrap' });
+  const renderChart = () => {
+    chartArea.replaceChildren(stat.records.length === 0
+      ? el('div', { class: 'empty-note' }, '記録するとここにグラフが育つトリ🐣')
+      : vs.tab === 'time' ? chartTime(stat)
+      : vs.tab === 'heat' ? chartHeat(stat, vs.heatCi, ci => { vs.heatCi = ci; renderChart(); })
+      : chartMonth(stat));
+  };
+  renderChart();
+  const tabs = el('div', { class: 'tabs' },
+    [['time', '時間帯'], ['heat', '曜日×時間帯'], ['month', '月の日付']].map(([k, lab]) =>
+      el('button', { class: vs.tab === k ? 'active' : '', onclick: ev => {
+        vs.tab = k;
+        tabs.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        ev.currentTarget.classList.add('active');
+        renderChart();
+      } }, lab)));
+
+  // 履歴(直近20件)
+  const recent = [...stat.records].sort((a, b) => b.ts - a.ts).slice(0, 20);
+  const hist = el('div', { class: 'hist' }, recent.map(r => {
+    const row = el('div', { class: 'hist-row' });
+    const mine = isMine(stat, r);
+    const build = () => replaceKids(row,
+      el('span', { class: 'chip' }, swatchFor(stat, r.c), stat.choices[r.c] ? stat.choices[r.c].name : '?'),
+      el('span', { class: 'when' }, fmtTs(r.ts),
+        stat.share ? el('span', { style: { color: 'var(--muted)', marginLeft: '5px' } },
+          mine ? '(自分)' : '(' + (r.nick || 'なかま') + ')') : null),
+      mine ? el('button', { class: 'ghost-btn mini', onclick: () => {
+        const inp = el('input', { type: 'datetime-local', value: toLocalInput(r.ts), style: { fontSize: '.8rem', padding: '5px' } });
+        row.replaceChildren(inp,
+          el('button', { class: 'ghost-btn mini', onclick: () => {
+            const t = new Date(inp.value).getTime();
+            if (!isNaN(t)) editRecord(stat, r, { ts: t });
+            route();
+          } }, '保存'),
+          el('button', { class: 'ghost-btn mini', onclick: build }, 'やめる'));
+      } }, '日時修正') : null,
+      mine ? el('button', { class: 'ghost-btn mini danger-btn', onclick: () => { removeRecord(stat, r.id); route(); } }, '削除') : null);
+    build();
+    return row;
+  }));
+
+  if (stat.share) syncStat(stat); // 共有中なら裏で同期(変化があれば再描画される)
+  replaceKids(app,
+    el('a', { class: 'backlink', href: '#/' }, '‹ ホーム'),
+    el('h1', null, stat.title),
+    stat.share ? el('div', { class: 'center', style: { fontSize: '.75rem', color: 'var(--muted)', margin: '-10px 0 10px' } },
+      stat.share.dead ? '☁ 共有停止済み(記録は端末に残っています)' : '☁ 共有中 · ' + memberCount(stat) + '人') : null,
+    el('div', { class: 'btnrow' }, stat.choices.map((ch, ci) =>
+      choiceButton(stat, ci, { onhit: i => recordAndToast(stat, i) }))),
+    backdate,
+    meterBlock(stat.records),
+    predBlock(stat),
+    tabs,
+    stat.records.length ? legendRow(stat) : null,
+    chartArea,
+    el('h2', { style: { fontSize: '.95rem', margin: '20px 0 4px' } }, '記録履歴' + (stat.records.length > 20 ? '(直近20件)' : '')),
+    stat.records.length ? hist : el('p', { class: 'empty-note' }, 'まだ記録がないトリ🥚'),
+    el('div', { class: 'linkrow' }, el('a', { href: '#/s/' + stat.id + '/edit' }, '⚙ この統計の設定・クイック記録URL')));
+}
+
+/* ---------- 画面: 0タップ記録の完了 ---------- */
+function renderDone(stat, recId) {
+  const rec = stat.records.find(r => r.id === recId);
+  if (!rec) { location.replace('#/s/' + stat.id); return; }
+  const delta = pendingDelta; pendingDelta = 0;
+  replaceKids(app,
+    el('div', { class: 'done-big' }, '記録したトリ🦜'),
+    el('div', { class: 'done-sub' },
+      '「' + stat.title + '」に ', swatchFor(stat, rec.c),
+      el('b', null, stat.choices[rec.c] ? stat.choices[rec.c].name : '?'),
+      ' — ' + fmtTs(rec.ts)),
+    el('div', { class: 'card' }, meterBlock(stat.records, { delta })),
+    predBlock(stat),
+    el('div', { class: 'center', style: { margin: '16px 0' } },
+      el('button', { class: 'ghost-btn danger-btn', onclick: () => {
+        removeRecord(stat, rec.id);
+        toast('取り消したトリ');
+        location.replace('#/s/' + stat.id);
+      } }, '取り消す')),
+    stat.choices.length > 1 ? el('div', { class: 'center' },
+      el('div', { style: { fontSize: '.78rem', color: 'var(--muted)', marginBottom: '6px' } }, 'まちがえた?こっちに差し替え:'),
+      el('div', { class: 'btnrow', style: { justifyContent: 'center' } },
+        stat.choices.map((ch, ci) => ci === rec.c ? null : choiceButton(stat, ci, { small: true, onhit: i => {
+          editRecord(stat, rec, { c: i }); renderDone(stat, rec.id);
+        } })))) : null,
+    el('div', { class: 'linkrow' },
+      el('a', { href: '#/s/' + stat.id }, 'くわしく見る'), ' / ', el('a', { href: '#/' }, 'ホーム')));
+}
+
+/* ---------- 画面: 設定 ---------- */
+function renderEdit(stat) {
+  const titleIn = el('input', { type: 'text', value: stat.title, maxlength: 40 });
+  const rowsBox = el('div');
+  const work = stat.choices.map(c => ({ ...c })); // 保存まで仮
+  const buildRows = () => rowsBox.replaceChildren(...work.map((c, i) => {
+    const inp = el('input', { type: 'text', value: c.name, maxlength: 20, oninput: e => { c.name = e.target.value; } });
+    const sw = el('button', {
+      class: 'ghost-btn', title: '色を変える',
+      style: { background: slotColor(c.slot), width: '38px', height: '38px', flex: '0 0 auto', borderRadius: '10px' },
+      onclick: () => { c.slot = (c.slot + 1) % 8; sw.style.background = slotColor(c.slot); }
+    });
+    return el('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } }, inp, sw);
+  }));
+  buildRows();
+
+  const base = location.href.split('#')[0];
+  const urlRow = (label, url) => el('div', { class: 'urlbox' },
+    el('button', { class: 'ghost-btn', style: { flex: '0 0 auto' }, onclick: () => {
+      (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
+        .then(() => toast('コピーしたトリ🦜')).catch(() => prompt('このURLをコピーしてね', url));
+    } }, label + ' をコピー'),
+    el('span', { class: 'u' }, url));
+
+  replaceKids(app,
+    el('a', { class: 'backlink', href: '#/s/' + stat.id }, '‹ ' + stat.title),
+    el('h1', null, '設定'),
+    el('div', { class: 'card' },
+      el('label', null, 'タイトル'), titleIn,
+      el('label', null, 'ボタン(名前と色。色タップで変更)'), rowsBox,
+      el('button', { class: 'ghost-btn', onclick: () => { work.push({ name: '', slot: work.length % 8 }); buildRows(); } }, '＋ 選択肢を追加'),
+      el('div', { style: { marginTop: '16px' } },
+        el('button', { class: 'primary-btn', style: { borderStyle: 'solid' }, onclick: () => {
+          const t = titleIn.value.trim();
+          const cleaned = work.filter(c => c.name.trim()).map(c => ({ name: c.name.trim(), slot: c.slot }));
+          if (!t || cleaned.length < 2) { toast('タイトルとボタン2つ以上が必要だトリ🦜'); return; }
+          if (cleaned.length < stat.choices.length) { toast('選択肢は減らせないトリ(記録が迷子になるので)'); return; }
+          stat.title = t; stat.choices = cleaned; save();
+          if (stat.share && !stat.share.dead) {
+            if (stat.share.owner) api('PATCH', '/api/stats/' + stat.share.sid,
+              { owner: stat.share.owner, title: t, choices: cleaned }).catch(() => {});
+            else toast('共有中の名前・ボタンはオーナーの変更が優先されるトリ');
+          }
+          location.hash = '#/s/' + stat.id;
+        } }, '保存する'))),
+    shareCard(stat),
+    el('div', { class: 'card' },
+      el('h2', null, '🚀 クイック記録URL'),
+      el('p', { style: { fontSize: '.8rem', color: 'var(--ink2)', margin: '0 0 10px' } },
+        'ボタンURLを開くと、開いた瞬間に記録完了(0タップ)。スマホの「ホーム画面に追加」でアイコンにするのがおすすめだトリ🦜'),
+      urlRow('この統計を開くURL', base + '#/s/' + stat.id),
+      ...stat.choices.map((ch, ci) => urlRow('「' + ch.name + '」を即記録するURL', base + '#/s/' + stat.id + '/hit/' + ci))),
+    el('div', { class: 'card' },
+      el('h2', null, 'データ'),
+      el('div', { class: 'btnrow' },
+        el('button', { class: 'ghost-btn', onclick: exportAll }, '全データを書き出し(JSON)'),
+        el('button', { class: 'ghost-btn', onclick: importAll }, '読み込み(マージ)'),
+        el('button', { class: 'ghost-btn danger-btn', onclick: () => {
+          if (confirm('「' + stat.title + '」を記録ごと削除する?')) {
+            db.stats = db.stats.filter(s => s.id !== stat.id); save();
+            location.hash = '#/';
+          }
+        } }, 'この統計を削除'))));
+}
+
+/* ---------- 共有カード(設定画面) ---------- */
+function copyText(url, doneMsg) {
+  (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
+    .then(() => toast(doneMsg)).catch(() => prompt('このURLをコピーしてね', url));
+}
+function shareCard(stat) {
+  const card = el('div', { class: 'card' }, el('h2', null, '🤝 仲間と共有'));
+  if (!canShare()) {
+    card.appendChild(el('p', { style: { fontSize: '.8rem', color: 'var(--muted)', margin: 0 } },
+      '共有サーバーは準備中だトリ🐣(準備できたらここに共有ボタンが出ます)'));
+    return card;
+  }
+  if (!stat.share) {
+    card.appendChild(el('p', { style: { fontSize: '.8rem', color: 'var(--ink2)', margin: '0 0 10px' } },
+      '共有すると招待URLが発行され、開いた人も登録なしで同じ統計に記録できます。共有するまで記録は端末の外に出ません。'));
+    const btn = el('button', { class: 'ghost-btn', onclick: async () => {
+      btn.disabled = true; btn.textContent = '共有を準備中…';
+      try { await shareStat(stat); toast('共有を開始したトリ🦜'); route(); }
+      catch (e) { toast('サーバーに接続できないトリ…あとで試してね'); btn.disabled = false; btn.textContent = '共有を開始する'; }
+    } }, '共有を開始する');
+    card.appendChild(btn);
+    return card;
+  }
+  if (stat.share.dead) {
+    card.appendChild(el('p', { style: { fontSize: '.8rem', color: 'var(--muted)', margin: 0 } },
+      'この共有は停止されています。記録は端末に残っています。'));
+    return card;
+  }
+  const nickIn = el('input', { type: 'text', value: stat.share.nick || '', maxlength: 20, placeholder: '(任意)' });
+  card.append(
+    el('p', { style: { fontSize: '.8rem', color: 'var(--ink2)', margin: '0 0 8px' } },
+      '☁ 共有中 · ' + memberCount(stat) + '人 — 招待URLをLINE等で送ってね(URLを知っている人は誰でも参加できます)'),
+    el('div', { class: 'urlbox' },
+      el('button', { class: 'ghost-btn', style: { flex: '0 0 auto' }, onclick: () => copyText(joinUrl(stat), '招待URLをコピーしたトリ🦜') }, '招待URL をコピー'),
+      el('span', { class: 'u' }, joinUrl(stat))),
+    el('label', null, 'ニックネーム(今後の記録に付きます)'),
+    el('div', { style: { display: 'flex', gap: '8px' } }, nickIn,
+      el('button', { class: 'ghost-btn', style: { flex: '0 0 auto' }, onclick: () => {
+        stat.share.nick = nickIn.value.trim(); save(); toast('保存したトリ🦜');
+      } }, '保存')),
+    stat.share.owner ? el('div', { style: { marginTop: '12px' } },
+      el('button', { class: 'ghost-btn danger-btn', onclick: async () => {
+        if (!confirm('共有を停止する?(招待URLが無効になります。みんなの記録はこの端末に残ります)')) return;
+        try { await api('POST', '/api/stats/' + stat.share.sid + '/revoke', { owner: stat.share.owner }); }
+        catch (e) {}
+        stat.share.dead = 1; save(); route();
+      } }, '共有を停止(リンク無効化)')) : null);
+  return card;
+}
+
+/* ---------- 参加(招待URLを開いた時) ---------- */
+async function handleJoin(sid) {
+  const existing = db.stats.find(s => s.share && s.share.sid === sid);
+  if (existing) { location.replace('#/s/' + existing.id); return; }
+  replaceKids(app, el('p', { class: 'empty-note' }, '共有statに参加中だトリ…🦜'));
+  if (!canShare()) { toast('共有サーバーが未設定だトリ…'); location.replace('#/'); return; }
+  try {
+    const d = await api('GET', '/api/stats/' + sid);
+    const stat = {
+      id: uid(), title: d.title, choices: d.choices,
+      records: d.records.slice(), created: Date.now(),
+      share: { sid, member: uid() + uid(), nick: '' }, ops: [],
+    };
+    db.stats.push(stat); save();
+    toast('「' + stat.title + '」に参加したトリ🦜');
+    location.replace('#/s/' + stat.id);
+  } catch (e) {
+    toast(e.status === 410 ? 'この共有は停止されているトリ…' : '招待が見つからないか、接続できないトリ…');
+    location.replace('#/');
+  }
+}
+
+/* ---------- 書き出し / 読み込み ---------- */
+function exportAll() {
+  const blob = new Blob([JSON.stringify(db, null, 1)], { type: 'application/json' });
+  const a = el('a', { href: URL.createObjectURL(blob), download: 'toukei-tori-backup.json' });
+  document.body.appendChild(a); a.click(); a.remove();
+  toast('書き出したトリ🦜');
+}
+function importAll() {
+  const inp = el('input', { type: 'file', accept: '.json,application/json' });
+  inp.addEventListener('change', () => {
+    const f = inp.files[0]; if (!f) return;
+    f.text().then(txt => {
+      const d = JSON.parse(txt);
+      if (!d || !Array.isArray(d.stats)) throw new Error('bad');
+      let newStats = 0, newRecs = 0;
+      for (const s of d.stats) {
+        const mine = findStat(s.id);
+        if (!mine) { db.stats.push(s); newStats++; continue; }
+        const ids = new Set(mine.records.map(r => r.id));
+        for (const r of (s.records || [])) if (!ids.has(r.id)) { mine.records.push(r); newRecs++; }
+      }
+      save(); route();
+      toast('読み込んだトリ🦜 統計+' + newStats + ' / 記録+' + newRecs);
+    }).catch(() => toast('読み込めないファイルだトリ…'));
+  });
+  inp.click();
+}
+
+/* ---------- ルーター ---------- */
+let pendingDelta = 0;
+function route() {
+  hideTip();
+  const h = location.hash.replace(/^#\/?/, '');
+  const p = h.split('/').map(decodeURIComponent);
+  if (!h) return renderHome();
+  if (p[0] === 'new') return renderNew();
+  if (p[0] === 'join' && p[1]) return handleJoin(p[1]);
+  if (p[0] === 's' && p[1]) {
+    const stat = findStat(p[1]);
+    if (!stat) { toast('その統計は見つからないトリ…'); location.replace('#/'); return; }
+    if (p[2] === 'hit' && p[3] != null) {
+      // 0タップ記録: 開いた瞬間に記録 → done へ差し替え(リロードでの二重記録を防ぐ)
+      let ci = /^\d+$/.test(p[3]) ? Number(p[3]) : stat.choices.findIndex(c => c.name === p[3]);
+      if (ci < 0 || ci >= stat.choices.length) { toast('そのボタンは見つからないトリ…'); location.replace('#/s/' + stat.id); return; }
+      const { rec, delta } = addRecord(stat, ci);
+      pendingDelta = delta;
+      location.replace('#/s/' + stat.id + '/done/' + rec.id);
+      return;
+    }
+    if (p[2] === 'done' && p[3]) return renderDone(stat, p[3]);
+    if (p[2] === 'edit') return renderEdit(stat);
+    return renderDetail(stat);
+  }
+  renderHome();
+}
+window.addEventListener('hashchange', route);
+// 画面に戻ってきた時、表示中の共有statを裏で最新化する
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  const m = location.hash.match(/^#\/s\/([^/]+)$/);
+  if (m) { const s = findStat(m[1]); if (s && s.share) syncStat(s); }
+});
+route();
+</script>
+</body>
+</html>
