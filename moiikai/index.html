@@ -193,7 +193,14 @@ body.capmode .btns,body.capmode .joy{display:none!important}
 .wbar{position:absolute;left:max(12px,env(safe-area-inset-left,0px));top:calc(env(safe-area-inset-top,0px) + 10px);display:flex;gap:12px;align-items:center;font:700 14px var(--f-body);color:var(--bone);pointer-events:none}
 .wbar button{pointer-events:auto;width:34px;height:34px;border-radius:50%;border:2px solid var(--line);background:rgba(8,7,9,.8);color:var(--bone);font:700 15px var(--f-body);cursor:pointer}
 body.wv .wbar{left:auto;right:max(12px,env(safe-area-inset-right,0px))}
-.wpz{position:absolute;inset:0;display:grid;place-items:center;background:rgba(5,4,6,.78)}
+.wpz{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(5,4,6,.78)}
+.wpz-t{margin:0;padding-inline:16px;text-align:center;font:700 14px var(--f-body);color:var(--bone)}
+.wleg{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;justify-content:center;font:700 12px var(--f-body);color:var(--bone-dim,#a9a39a);pointer-events:none}
+.wleg span{display:inline-flex;align-items:center;gap:5px}
+.wleg i{display:inline-block;width:9px;height:9px;border-radius:50%}
+.wleg i.sq{border-radius:1px}
+.wleg i.tri{width:0;height:0;border-radius:0;border-left:9px solid #e8e2d4;border-top:5px solid transparent;border-bottom:5px solid transparent}
+.wleg .wtip{flex-basis:100%;justify-content:center;color:var(--bone)}
 .wpz canvas{touch-action:none;cursor:pointer;display:block}
 .wpz .x{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:max(12px,env(safe-area-inset-right,0px));width:40px;height:40px;border-radius:50%;border:2px solid var(--line);background:rgba(8,7,9,.85);color:var(--bone);font:700 18px var(--f-body);cursor:pointer}
 body.wm .hud,body.wm .map,body.wm .dot,body.wm .touch,body.wm .help,body.wv .map,body.wv .dot,body.wv .touch,body.wv .help{display:none!important}
@@ -260,7 +267,7 @@ body.wm .hud,body.wm .map,body.wm .dot,body.wm .touch,body.wm .help,body.wv .map
 <div class="deathfx" id="deathfx"></div>
 <div class="dot"></div>
 
-<div class="watch" id="watch" hidden><canvas id="wcv"></canvas><div class="wbar"><button id="w-back" type="button" aria-label="もどる">✕</button><span id="w-fl"></span></div><div class="wpz" id="wpz" hidden><canvas id="wpc"></canvas><button class="x" id="wpz-x" type="button" aria-label="やめる">✕</button></div></div>
+<div class="watch" id="watch" hidden><canvas id="wcv"></canvas><div class="wbar"><button id="w-back" type="button" aria-label="もどる">✕</button><span id="w-fl"></span></div><div class="wleg" id="wleg"><span><i class="tri"></i>仲間</span><span><i style="background:#c41e1e"></i>敵</span><span><i style="background:#ff9a3c"></i>ヒューズ</span><span><i class="sq" style="background:#3cff8a"></i>出口</span><span><i style="background:#ffd970"></i>明かり</span><span class="wtip">シャッター・消えた明かりを押す → 配線パズル　通路を押す → 仲間の地図に印</span></div><div class="wpz" id="wpz" hidden><p class="wpz-t">マスを押して回す。電源から右の機械までつなぐ</p><canvas id="wpc"></canvas><button class="x" id="wpz-x" type="button" aria-label="やめる">✕</button></div></div>
 
 <div class="hud">
   <div hidden><div class="hp" id="hp"><i></i><i></i><i></i><i hidden></i></div><div class="stam" id="stam"><i id="stam-bar"></i></div><div class="batt" id="batt"><i id="batt-bar"></i></div></div>
@@ -4303,7 +4310,8 @@ function drawWatch(){
   c.setTransform(d,0,0,d,0,0);c.fillStyle='#070608';c.fillRect(0,0,w,h);
   if(!L||!L.W)return;
   const top=54,pad=12,side=w>=h,lx=!NET.watch&&side?70:0;   // 自動の地図：左のボタンをよける
-  const bw=side?(w-lx-pad*3)/2:w-pad*2,bh=side?h-top-pad:(h-top-pad*3)/2;
+  const bot=w<520?62:44;
+  const bw=side?(w-lx-pad*3)/2:w-pad*2,bh=side?h-top-pad-bot:(h-top-bot-pad*3)/2;
   const s=Math.max(2,Math.floor(Math.min(bw,bh)/L.W));
   WV.boxes=[];
   const pls=wvPlayers();
@@ -4971,7 +4979,7 @@ function renderChars(){
   const lb=$('lobby-chars');let cb=$('chr-cam');
   if(camOn&&!cb){
     cb=document.createElement('button');cb.type='button';cb.className='chr cam';cb.id='chr-cam';
-    cb.innerHTML=CAM_SVG+'<span><b>📷</b>見守る</span>';
+    cb.innerHTML=CAM_SVG+'<span><b>📹</b>見守る</span>';
     cb.addEventListener('click',()=>{camPick=true;renderChars();});lb.appendChild(cb);
     cb.classList.toggle('sel',camPick);
   }
@@ -4979,7 +4987,7 @@ function renderChars(){
   if(!camOn)camPick=false;
   $('go-host').hidden=camPick;
 }
-const CAM_SVG='<svg viewBox="0 0 48 40" fill="none" stroke="#e8e2d4" stroke-width="2.6" stroke-linejoin="round"><path d="M5 12h9l4-6h12l4 6h9v22H5z"/><circle cx="24" cy="22" r="7.5"/><circle cx="24" cy="22" r="2.6" fill="#c41e1e" stroke="none"/></svg>';
+const CAM_SVG='<svg viewBox="0 -4 48 44" fill="none" stroke="#e8e2d4" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"><path d="M4 5v16"/><path d="M4 13h6l4 6"/><g transform="rotate(20 27 15)"><rect x="12" y="8" width="24" height="13" rx="2"/><path d="M36 10.5l7-2.5v13l-7-2.5"/><path d="M11 5h26"/></g><circle cx="18.5" cy="12.5" r="1.9" fill="#c41e1e" stroke="none"/></svg>';
 let camOn=false,camPick=false;
 try{camOn=localStorage.getItem('moiikai-cam')==='1';}catch(e){}
 {
